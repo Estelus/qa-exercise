@@ -20,18 +20,7 @@ Ideas (pick any):
 """
 import pytest
 
-
 pytestmark = pytest.mark.api
-
-
-def test_get_missing_product_returns_404_with_error(api_client):
-    session, base_url = api_client
-
-    response = session.get(f"{base_url}/api/products/999")
-
-    assert response.status_code == 404
-    assert response.json() == {"error": "Product not found"}
-
 
 def test_adding_product_updates_cart_totals(api_client):
     session, base_url = api_client
@@ -47,6 +36,13 @@ def test_adding_product_updates_cart_totals(api_client):
     assert payload["items"][0]["quantity"] == 1
     assert payload["items"][0]["subtotal"] == 79.99
 
+def test_get_missing_product_returns_404_with_error(api_client):
+    session, base_url = api_client
+
+    response = session.get(f"{base_url}/api/products/999")
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "Product not found"}
 
 def test_checkout_returns_422_when_required_fields_are_missing(api_client):
     session, base_url = api_client
