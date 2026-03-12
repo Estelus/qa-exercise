@@ -18,7 +18,8 @@ fixtures and the driver work.
 import pytest
 
 from selenium.webdriver.common.by import By
-
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 # -----------------------------------------------------------------------
 # TASK 2: Refactor this test. It works, but has quality problems.
@@ -26,12 +27,12 @@ from selenium.webdriver.common.by import By
 # -----------------------------------------------------------------------
 @pytest.mark.ui
 def test_add_to_cart_bad(driver, app_server):
-    import time
-    driver.get('http://localhost:5050')
-    time.sleep(3)
-    btns = driver.find_elements(By.CLASS_NAME, 'add-to-cart-btn')
-    btns[0].click()
-    time.sleep(3)
+    driver.get(app_server)
+    add_to_cart_button = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.CLASS_NAME, 'add-to-cart-btn'))
+    )
+    add_to_cart_button.click()
+    WebDriverWait(driver, 10).until(EC.title_contains('Cart'))
     assert 'Cart' in driver.title
 
 
@@ -44,7 +45,22 @@ def test_add_to_cart_bad(driver, app_server):
 # The detail page should show the product name, price, and stock status.
 @pytest.mark.ui
 def test_product_detail_page(driver, app_server):
-    pass  # TODO: implement
+    driver.get(app_server)
+    product_link = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.CLASS_NAME, 'product-name'))
+    )
+    expected_name = product_link.text
+    expected_price = driver.find_element(By.CLASS_NAME, 'product-price').text
+    expected_stock = driver.find_element(By.CLASS_NAME, 'product-stock').text
+
+    product_link.click()
+
+    WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.ID, 'product-detail'))
+    )
+    assert driver.find_element(By.CLASS_NAME, 'product-name').text == expected_name
+    assert driver.find_element(By.CLASS_NAME, 'product-price').text == expected_price
+    assert driver.find_element(By.CLASS_NAME, 'product-stock').text.startswith(expected_stock)
 
 
 # Scenario B: Cart total calculation
@@ -52,7 +68,42 @@ def test_product_detail_page(driver, app_server):
 # should equal the sum of each product's price.
 @pytest.mark.ui
 def test_cart_total_calculation(driver, app_server):
-    pass  # TODO: implement
+    driver.get(app_server)
+    WebDriverWait(driver, 10).until(
+        EC.presence_of_all_elements_located((By.CLASS_NAME, 'product-card'))
+    )
+
+    product_cards = driver.find_elements(By.CLASS_NAME, 'product-card')
+    in_stock_cards = [
+        card for card in product_cards
+        if 'Out of Stock' not in card.find_element(By.CLASS_NAME, 'product-stock').text
+    ]
+
+    selected_products = [
+        {
+            'id': card.get_attribute('data-product-id'),
+            'price': float(card.find_element(By.CLASS_NAME, 'product-price').text.replace('$', '')),
+        }
+        for card in in_stock_cards[:2]
+    ]
+    expected_total = sum(product['price'] for product in selected_products)
+
+    for index, product in enumerate(selected_products):
+        current_card = driver.find_element(
+            By.CSS_SELECTOR, f'.product-card[data-product-id="{product["id"]}"]'
+        )
+        current_card.find_element(By.CLASS_NAME, 'add-to-cart-btn').click()
+        WebDriverWait(driver, 10).until(EC.title_contains('Cart'))
+        if index < len(selected_products) - 1:
+            driver.get(app_server)
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_all_elements_located((By.CLASS_NAME, 'product-card'))
+            )
+
+    cart_total = WebDriverWait(driver, 10).until(
+        EC.visibility_of_element_located((By.ID, 'cart-total'))
+    ).text
+    assert cart_total == f'Total: ${expected_total:.2f}'
 
 
 # Scenario C: Checkout form validation
@@ -60,7 +111,27 @@ def test_cart_total_calculation(driver, app_server):
 # an error message should be displayed and the order should NOT be confirmed.
 @pytest.mark.ui
 def test_checkout_form_validation(driver, app_server):
-    pass  # TODO: implement
+    driver.get(app_server)
+    WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.CLASS_NAME, 'add-to-cart-btn'))
+    ).click()
+
+    WebDriverWait(driver, 10).until(EC.title_contains('Cart'))
+    WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.ID, 'checkout-btn'))
+    ).click()
+
+    WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.ID, 'checkout-form'))
+    )
+    driver.find_element(By.ID, 'place-order-btn').click()
+
+    error_message = WebDriverWait(driver, 10).until(
+        EC.visibility_of_element_located((By.ID, 'error-message'))
+    )
+    assert error_message.text == 'All fields are required.'
+    assert '/checkout' in driver.current_url
+    assert '/order-confirmed' not in driver.current_url
 
 
 # -----------------------------------------------------------------------
@@ -68,3 +139,7 @@ def test_checkout_form_validation(driver, app_server):
 # -----------------------------------------------------------------------
 # What else would you test if you had more time?
 # (A few bullet points is all we need.)
+# - Negative ad edge cases, not only happy path
+# - POM for easier maintenance test cases in the future
+# - test cases for cart and products tabs like quantity updates, item removal, and total recalculation after changes
+# - e2e purchase flow
