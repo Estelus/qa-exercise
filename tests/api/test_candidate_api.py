@@ -23,4 +23,39 @@ import pytest
 
 pytestmark = pytest.mark.api
 
- # TODO: add your API tests here
+
+def test_get_missing_product_returns_404_with_error(api_client):
+    session, base_url = api_client
+
+    response = session.get(f"{base_url}/api/products/999")
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "Product not found"}
+
+
+def test_adding_product_updates_cart_totals(api_client):
+    session, base_url = api_client
+
+    response = session.post(f"{base_url}/api/cart/1")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["item_count"] == 1
+    assert payload["total"] == 79.99
+    assert payload["cart"] == {"1": 1}
+    assert payload["items"][0]["id"] == 1
+    assert payload["items"][0]["quantity"] == 1
+    assert payload["items"][0]["subtotal"] == 79.99
+
+
+def test_checkout_returns_422_when_required_fields_are_missing(api_client):
+    session, base_url = api_client
+    session.post(f"{base_url}/api/cart/1")
+
+    response = session.post(
+        f"{base_url}/api/checkout",
+        json={"name": "", "email": "user@example.com", "address": ""},
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {"error": "All fields are required."}
